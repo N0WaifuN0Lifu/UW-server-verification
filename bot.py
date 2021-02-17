@@ -12,7 +12,6 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 TOKEN = config['MAIN']['Token']
 PREFIX = config['MAIN']['Prefix']
-
 client = commands.Bot(command_prefix=PREFIX)
 
 @client.event
