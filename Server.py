@@ -33,7 +33,8 @@ def newuser(DID): #initialize new user
                 "discordid": DID,
                 "confirmationcode": verifcode,
                 "verified": False,
-                "failed_logins": 0}
+                "failed_logins": 0,
+                "server_verified": False}
             mydict.commit()
     return ("http://127.0.0.1:5000/verification/"+ str(uuid_user)+"/email")
   

@@ -17,6 +17,17 @@ client = commands.Bot(command_prefix=PREFIX)
 @client.event
 async def on_ready():
     print("bot is ready")
+    while True:
+        with SqliteDict('./my_db.sqlite') as mydict:
+            check_dict = mydict
+            for key in check_dict:
+                if not check_dict[key]["server_verified"]
+                    user_id = check_dict[key]["discordid"]
+                    await discord.Member.add_roles(user_id, "verified")
+                    check_dict[key]["server_verified"] = True
+                    mydict = check_dict
+                    mydict.commit()      
+            time.sleep(300)
             
 
 @client.command()
@@ -28,9 +39,28 @@ async def hello(ctx):
     embed.add_field(name="Server Owner:", value=f"{ctx.guild.owner}")
     embed.set_thumbnail(url="https://uwaterloo.ca/library/sites/ca.library/files/uploads/images/img_0236_0.jpg")
     await user.send(embed=embed)
+
+
+@client.event
+@commands.has_role(name='Admin')
+async def unverify(user):
+    #await discord.Member.removeroll_roles(user, "verified")
+    with SqliteDict('./my_db.sqlite') as mydict:
+            check_dict = mydict
+        #find persons in list and remove em
+    
+
+    
     
 
 try:
     client.run(TOKEN, bot = True)
 except Exception as e:
     print(f'Error when logging in: {e}')
+    
+    
+    
+    
+    
+    
+    
