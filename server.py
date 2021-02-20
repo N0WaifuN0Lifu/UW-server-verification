@@ -32,14 +32,20 @@ def start(uuid):
     if session is None:
         abort(404)
 
+    # If the user has entered an email ready, take them to the code
+    # verification form.
+    if session.state == db.SessionState.WAITING_ON_CODE:
+        return redirect(url_for("verify_get", uuid=uuid), code=303)
+
     if request.method == "POST":
         email = request.form["email"]
         if not email.endswith("uwaterloo.ca"):
             # TODO: error feedback
-            return redirect(url_for("start", uuid=uuid))
+            return redirect(url_for("start", uuid=uuid), code=303)
 
         mail.send(email, session.verification_code, session.discord_name)
-        return redirect(url_for("verify_get", uuid=uuid))
+        db.set_email_sent(uuid)
+        return redirect(url_for("verify_get", uuid=uuid), code=303)
 
     else:
         return render_template("start.html")

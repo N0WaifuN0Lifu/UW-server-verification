@@ -1,12 +1,27 @@
 import asyncio
 from dataclasses import dataclass
 import datetime
+import enum
 import uuid
 import random
 
 from sqlitedict import SqliteDict
 
 DATABASE_FILE = "./my_db.sqlite"
+
+
+class SessionState(enum.Enum):
+    """A SessionStage describes the possible states of a session.
+
+    1. When a session is created, it is WAITING_ON_START for the user to enter
+    an email.
+    2. When we send an email it goes into WAITING_ON_CODE and we wait for the
+    user to enter the code.
+    3. When the session is verified, it goes into VERIFIED and can be deleted.
+    """
+    WAITING_ON_START = enum.auto()
+    WAITING_ON_CODE = enum.auto()
+    VERIFIED = enum.auto()
 
 
 @dataclass
@@ -17,8 +32,9 @@ class Session():
     discord_name: str
     verification_code: str
     timestamp: datetime.datetime
-    is_email_verified: bool = False
+    state: SessionState = SessionState.WAITING_ON_START
     remaining_attempts: int = 5
+
 
 def _new_fake_session() -> str:
     """Start a new fake session for testing.
@@ -73,6 +89,19 @@ def session(session_id: str) -> Session:
             return None
 
 
+def set_email_sent(session_id: str):
+    """Transition a session into the WAITING_ON_CODE state."""
+    with SqliteDict(DATABASE_FILE) as db:
+        try:
+            session = db[session_id]
+        except KeyError:
+            # TODO: handle this error
+            return
+        session.state = SessionState.WAITING_ON_CODE
+        db[session_id] = session
+        db.commit()
+
+
 def verify(session_id: str, attempted_code: str):
     """Verify a user using an attempted verification code.
     
@@ -90,7 +119,7 @@ def verify(session_id: str, attempted_code: str):
         expected_code = session.verification_code
 
         if attempted_code == expected_code:
-            session.is_email_verified = True
+            session.state = SessionState.VERIFIED
             db[session_id] = session
             db.commit()
             return True
@@ -138,7 +167,7 @@ async def collect_garbage(expiry_seconds: int):
 async def verified_user_ids(expiry_seconds: int):
     with SqliteDict(DATABASE_FILE, flag='r') as db:
         for session_id, session in db.items():
-            if not session.is_email_verified or _expired(
+            if not session.state is SessionState.VERIFIED or _expired(
                     session, expiry_seconds):
                 continue
             # TODO: make this testing part cleaner
