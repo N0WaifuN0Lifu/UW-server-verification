@@ -20,11 +20,28 @@ class Session():
     is_email_verified: bool = False
     remaining_attempts: int = 5
 
+def _new_fake_session() -> str:
+    """Start a new fake session for testing.
+
+    This session will never get verified by the bot."""
+    session_id = "123"
+
+    with SqliteDict(DATABASE_FILE) as db:
+        db[session_id] = Session(
+            user_id=0,
+            guild_id=0,
+            discord_name="Testing#123",
+            verification_code="-420",
+            timestamp=datetime.datetime.now(),
+        )
+        db.commit()
+    return session_id
+
 
 def new_session(user_id: int, guild_id: int, discord_name: str) -> str:
     """Start a new session for a user in a guild and return the id for the session."""
     session_id = str(uuid.uuid4())
-    verification_code = random.randint(10000000, 99999999)
+    verification_code = str(random.randint(10000000, 99999999))
 
     with SqliteDict(DATABASE_FILE) as db:
         db[session_id] = Session(
@@ -72,7 +89,7 @@ def verify(session_id: str, attempted_code: str):
 
         expected_code = session.verification_code
 
-        if attempted_code == str(expected_code):
+        if attempted_code == expected_code:
             session.is_email_verified = True
             db[session_id] = session
             db.commit()
@@ -123,5 +140,8 @@ async def verified_user_ids(expiry_seconds: int):
         for session_id, session in db.items():
             if not session.is_email_verified or _expired(
                     session, expiry_seconds):
+                continue
+            # TODO: make this testing part cleaner
+            if session.verification_code == "-420":
                 continue
             yield session_id, session

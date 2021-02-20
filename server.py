@@ -86,4 +86,6 @@ def failure():
 
 
 if __name__ == "__main__":
+    session_id = db._new_fake_session()
+    print(f"http://localhost:5000/start/{session_id}/email")
     app.run(debug=True)
