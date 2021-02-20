@@ -14,11 +14,6 @@ import db
 app = Flask(__name__)
 
 
-@app.route("/")
-def home(name):
-    return render_template("index.html", content=name)
-
-
 @app.route("/start/<uuid>/email", methods=["POST", "GET"])
 def start(uuid):
     session = db.session(uuid)
