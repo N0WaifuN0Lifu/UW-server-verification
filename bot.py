@@ -9,13 +9,16 @@ from sqlitedict import SqliteDict
 import config
 import db
 
-config = config.read()
 ROLE_NAME = "UW Verified"
 
 
 class VerifyCog(commands.Cog):
-    def __init__(self, bot, *args, **kwargs):
+    def __init__(self, bot, check_interval, expiry_seconds, url, *args,
+                 **kwargs):
         self.bot = bot
+        self.check_interval = check_interval
+        self.expiry_seconds = expiry_seconds
+        self.url = url
         bot.loop.create_task(self.maintenance_loop())
         super().__init__(*args, **kwargs)
 
@@ -34,13 +37,13 @@ class VerifyCog(commands.Cog):
         print("Bot is ready")
 
     async def maintenance_loop(self):
-        interval = config.check_interval
+        interval = self.check_interval
         print(f"Sleeping {interval} seconds between maintenance iterations")
         while True:
             await self.bot.wait_until_ready()
 
             async for session_id, session in db.verified_user_ids(
-                    config.expiry_seconds):
+                    self.expiry_seconds):
                 user_id, guild_id = session.user_id, session.guild_id
                 try:
                     guild = self.bot.get_guild(guild_id)
@@ -61,7 +64,7 @@ class VerifyCog(commands.Cog):
                     continue
                 db.delete_session(session_id)
 
-            await db.collect_garbage(config.expiry_seconds)
+            await db.collect_garbage(self.expiry_seconds)
             await asyncio.sleep(interval)
 
     @commands.command()
@@ -79,7 +82,7 @@ class VerifyCog(commands.Cog):
         name = f"{ctx.author.name}#{ctx.author.discriminator}"
         session_id = db.new_session(user_id, guild_id, name)
 
-        verification_link = f"{config.url}/start/{session_id}/email"
+        verification_link = f"{self.url}/start/{session_id}/email"
 
         embed = discord.Embed(
             title="Verification!",
@@ -101,12 +104,16 @@ class VerifyCog(commands.Cog):
 
 
 def main():
-    try:
-        bot = commands.Bot(command_prefix=config.prefix)
-        bot.add_cog(VerifyCog(bot))
-        bot.run(config.token)
-    except Exception as e:
-        print(f'Error: {e}')
+    configdata = config.read()
+    bot = commands.Bot(command_prefix=configdata.prefix)
+    bot.add_cog(
+        VerifyCog(
+            bot=bot,
+            check_interval=configdata.check_interval,
+            expiry_seconds=configdata.expiry_seconds,
+            url=configdata.url,
+        ))
+    bot.run(configdata.token)
 
 
 if __name__ == "__main__":
