@@ -90,6 +90,14 @@ def success():
 def failure():
     return render_template("failed_verification.html")
 
+@app.route("/")
+def root():
+    return render_template("index.html")
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template("404.html"), 404
+
 
 if __name__ == "__main__":
     session_id = db._new_fake_session()
