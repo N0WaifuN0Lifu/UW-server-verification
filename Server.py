@@ -1,17 +1,29 @@
+import os
 import random
-import smtplib
 import time
 import uuid
 import configparser
-
-from email.message import EmailMessage
 
 from flask import Flask, abort, redirect, url_for, render_template, request
 from sqlitedict import SqliteDict
 
 import db
+import mailer
 
 app = Flask(__name__)
+smtp_host = os.environ.get("ANDREWBOT_SMTP_HOST", None)
+smtp_port = os.environ.get("ANDREWBOT_SMTP_PORT", 465)
+smtp_user = os.environ.get("ANDREWBOT_SMTP_USER", None)
+smtp_pass = os.environ.get("ANDREWBOT_SMTP_PASS", None)
+if smtp_host is None:
+    mail = mailer.PrintMailer()
+else:
+    mail = mailer.SMTPMailer(
+        host=smtp_host,
+        port=smtp_port,
+        username=smtp_user,
+        password=smtp_pass,
+    )
 
 
 @app.route("/start/<uuid>/email", methods=["POST", "GET"])
@@ -26,7 +38,7 @@ def start(uuid):
             # TODO: error feedback
             return redirect(url_for("start", uuid=uuid))
 
-        sendmail_fake(email, session.verification_code, session.discord_name)
+        mail.send(email, session.verification_code, session.discord_name)
         return redirect(url_for("verify_get", uuid=uuid))
 
     else:
@@ -71,38 +83,6 @@ def success():
 @app.route("/failure")
 def failure():
     return render_template("failed_verification.html")
-
-
-def generate_message(email, code, name):
-    msg = EmailMessage()
-    body = (
-        f"Your verification code is {code}",
-        ""
-        f"This email was triggered by {name}.",
-    )
-    msg.set_content("\n".join(body))
-    msg['Subject'] = "Email Verification Code from AndrewBot"
-    msg['From'] = "uw.andrew.bot@gmail.com"
-    # TODO: Add a reply-to
-    msg['To'] = str(email)
-    return msg
-
-
-def sendmail_fake(email, verif, name):
-    msg = generate_message(email, verif, name)
-    print(f"Sending fake email")
-    print(msg)
-
-
-def sendmail(email, verif, name):
-    msg = generate_message(email, verif, name)
-
-    # Send the message via our own SMTP server.
-    # TODO: grab password from somewhere secure
-    server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-    server.login("LOGIN", "PASS")
-    server.send_message(msg)
-    server.quit()
 
 
 if __name__ == "__main__":
