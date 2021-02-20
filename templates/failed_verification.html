@@ -1,4 +1,8 @@
-<html>
-<h1> Invalid verification code or link. </h1>
-Please restart verification process with bot
-</html>
+{% extends "base.html" %}
+{% block title %}
+Verification Failed
+{% endblock %}
+{% block content %}
+<p>Invalid verification code or link.</p>
+<p>Please restart the verification process with bot.</p>
+{% endblock %}
