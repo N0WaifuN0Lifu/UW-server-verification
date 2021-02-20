@@ -1,121 +1,114 @@
-from flask import Flask,redirect,url_for,render_template,request
-import uuid
-import time
 import random
-import json
-import uuid
-import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-import configparser
-from sqlitedict import SqliteDict
-
-
-#for email sending
 import smtplib
+import time
+import uuid
+import configparser
+
 from email.message import EmailMessage
 
+from flask import Flask, abort, redirect, url_for, render_template, request
+from sqlitedict import SqliteDict
+
+import db
 
 app = Flask(__name__)
 
 
-@app.route("/<name>")
+@app.route("/")
 def home(name):
-    return render_template("index.html",content=name)
+    return render_template("index.html", content=name)
 
 
-@app.route("/new/<DID>")
-def newuser(DID): #initialize new user
-    uuid_user = uuid.uuid4()
-    verifcode = (random.randint(10000000,99999999))
-    with SqliteDict('./my_db.sqlite') as mydict:
-            mydict[str(uuid_user)] = {
-                "discordid": DID,
-                "confirmationcode": verifcode,
-                "verified": False,
-                "failed_logins": 0,
-                "server_verified": False}
-            mydict.commit()
-    return ("http://127.0.0.1:5000/verification/"+ str(uuid_user)+"/email")
-  
-    
-@app.route("/verification/<UUID>/email",methods=["POST", "GET"])
-def inputemail(UUID):
+@app.route("/start/<uuid>/email", methods=["POST", "GET"])
+def start(uuid):
+    session = db.session(uuid)
+    if session is None:
+        abort(404)
+
     if request.method == "POST":
-        user = request.form["nm"]
-        
-        if user.endswith("uwaterloo.ca"): #sends email with verification code to user
-            with SqliteDict('./my_db.sqlite') as mydict:
-                verif_key = mydict[UUID]["confirmationcode"]
-                sendmail(user,verif_key)
-            initialize = 0
-            return redirect(url_for("verifinput",UUID=UUID))
-        
-        else: #returns them to input email screen
-            return redirect(url_for("inputemail",UUID=UUID))
-            
-    else:
-        return render_template("login.html")
-    
-    
+        email = request.form["email"]
+        if not email.endswith("uwaterloo.ca"):
+            # TODO: error feedback
+            return redirect(url_for("start", uuid=uuid))
 
-@app.route("/verifyinput/<UUID>",methods=["POST", "GET"])
-def verifinput(UUID):
-    if request.method == "POST":
-        with SqliteDict('./my_db.sqlite') as mydict: #load up variables for further logic
-            token = mydict[UUID]["confirmationcode"]
-            verify_number = mydict[UUID]["failed_logins"]
-        verification_form = request.form["verification"]
-        
-        if str(verification_form) == str(token): #if correctly inputs verification change them to verified
-            print("debug1")
-            with SqliteDict('./my_db.sqlite') as mydict:
-                mydict[UUID]["verified"] = True
-                mydict.commit()
-            return redirect(url_for("verifworked"))
-        
-        elif verify_number == 5: #if 5 wrong inputs delete user
-            with SqliteDict('./my_db.sqlite') as mydict:
-                del mydict[UUID]
-                mydict.commit()
-            return redirect(url_for("veriffailed"))
-            
-        else: #if string is not matched add +1 to wrong verifyinput
-            with SqliteDict('./my_db.sqlite') as mydict:
-                variabledict = mydict[UUID]
-                variabledict['failed_logins'] += 1
-                mydict[UUID] = variabledict
-                print("mydict", variabledict['failed_logins'])
-                mydict.commit()
-            return redirect(url_for("verifinput",UUID=UUID))
-                    
-    else:
-        with SqliteDict('./my_db.sqlite') as mydict:
-            attempts = mydict[UUID]['failed_logins']
-        return render_template("verify.html",verify_number=attempts)
+        sendmail_fake(email, session.verification_code, session.discord_name)
+        return redirect(url_for("verify_get", uuid=uuid))
 
-@app.route("/verifworked")
-def verifworked():
+    else:
+        return render_template("start.html")
+
+
+@app.route("/verify/<uuid>", methods=["POST"])
+def verify_post(uuid):
+    # Post-Redirect-Get pattern
+    attempted_code = request.form["verification"]
+    verification_result = db.verify(uuid, attempted_code)
+
+    if verification_result is True:
+        return redirect(url_for("success"), code=303)
+    elif verification_result == 0:
+        # TODO: give 400 error? But who cares
+        return redirect(url_for("failure"), code=303)
+    else:
+        return redirect(url_for("verify_get", uuid=uuid), code=303)
+
+
+@app.route("/verify/<uuid>", methods=["GET"])
+def verify_get(uuid):
+    remaining_attempts = db.peek_attempts(uuid)
+
+    if remaining_attempts is None:
+        abort(404)
+
+    assert (remaining_attempts > 0)
+
+    return render_template(
+        "verify.html",
+        remaining_attempts=remaining_attempts,
+    ), 200
+
+
+@app.route("/success")
+def success():
     return render_template("passed_verification.html")
 
-@app.route("/veriffailed")
-def veriffailed():
+
+@app.route("/failure")
+def failure():
     return render_template("failed_verification.html")
 
 
-
-def sendmail(email,verif):
+def generate_message(email, code, name):
     msg = EmailMessage()
-    msg.set_content('Hi, your verification code for the UW discord is: ' + str(verif))
-    msg['Subject'] = 'University of Waterloo Verification Code'
+    body = (
+        f"Your verification code is {code}",
+        ""
+        f"This email was triggered by {name}.",
+    )
+    msg.set_content("\n".join(body))
+    msg['Subject'] = "Email Verification Code from AndrewBot"
     msg['From'] = "uw.andrew.bot@gmail.com"
+    # TODO: Add a reply-to
     msg['To'] = str(email)
+    return msg
+
+
+def sendmail_fake(email, verif, name):
+    msg = generate_message(email, verif, name)
+    print(f"Sending fake email")
+    print(msg)
+
+
+def sendmail(email, verif, name):
+    msg = generate_message(email, verif, name)
 
     # Send the message via our own SMTP server.
+    # TODO: grab password from somewhere secure
     server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
     server.login("LOGIN", "PASS")
     server.send_message(msg)
-    server.quit()   
+    server.quit()
+
 
 if __name__ == "__main__":
     app.run(debug=True)

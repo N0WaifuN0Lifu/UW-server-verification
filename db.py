@@ -101,7 +101,6 @@ def delete_session(session_id: str):
 
 def _expired(session: str, expiry_seconds: int) -> bool:
     """Determine if a Session is expired."""
-    # TODO: configurable expiry
     delta = datetime.datetime.now() - session.timestamp
     return delta.total_seconds() > expiry_seconds
 
