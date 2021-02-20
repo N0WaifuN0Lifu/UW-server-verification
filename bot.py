@@ -10,6 +10,7 @@ import config
 import db
 
 config = config.read()
+ROLE_NAME = "UW Verified"
 
 
 class VerifyCog(commands.Cog):
@@ -20,6 +21,16 @@ class VerifyCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        # Search for a role called "UW Verified" in all servers and cache its
+        # id by guild id
+        self.verified_roles = {}
+        for guild in self.bot.guilds:
+            for role in guild.roles:
+                if role.name == ROLE_NAME:
+                    self.verified_roles[guild.id] = role.id
+                    break
+            else:
+                print(f"{ROLE_NAME} role not found in guild {guild}")
         print("Bot is ready")
 
     async def maintenance_loop(self):
@@ -34,10 +45,15 @@ class VerifyCog(commands.Cog):
                 try:
                     guild = self.bot.get_guild(guild_id)
                     member = await guild.fetch_member(user_id)
-                    # TODO: search for "uw-verified" role once and cache it by guild id
-                    role = guild.get_role(812472842632691725)
+                    role_id = self.verified_roles.get(guild_id, None)
+                    if role_id is None:
+                        print(
+                            f"Skipping verification for {session.discord_name} because no role was found in {guild}"
+                        )
+                        continue
+                    role = guild.get_role(role_id)
                     print(
-                        f"Adding role to {session.discord_name} with id {member.id}"
+                        f"Adding role to user {session.discord_name} with user id {member.id}"
                     )
                     await member.add_roles(role, reason="Verification Bot")
                 except Exception as e:
