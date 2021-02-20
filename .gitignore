@@ -1,1 +1,4 @@
 config.ini
+my_db.sqlite
+.vscode
+__pycache__
