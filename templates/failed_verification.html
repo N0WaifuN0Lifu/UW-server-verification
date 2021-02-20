@@ -1,4 +1,8 @@
-<html>
-<h1> You have failed verification due to 5 wrong verification pins. <br>
- Please restart verification process with bot</h1>
-</html>
+{% extends "base.html" %}
+{% block title %}
+Verification Failed
+{% endblock %}
+{% block content %}
+<p>You have exceeded the retry limit for your verification code.</p>
+<p>Please restart the verification process with bot.</p>
+{% endblock %}

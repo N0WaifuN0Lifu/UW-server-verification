@@ -1,66 +1,120 @@
+import asyncio
+import time
+import uuid
+
 import discord
 from discord.ext import commands
-import time
-import configparser
-import uuid
-import requests
-from bs4 import BeautifulSoup
+from sqlitedict import SqliteDict
+
+import config
+import db
+
+ROLE_NAME = "UW Verified"
 
 
-#Configurations
-config = configparser.ConfigParser()
-config.read('config.ini')
-TOKEN = config['MAIN']['Token']
-PREFIX = config['MAIN']['Prefix']
-client = commands.Bot(command_prefix=PREFIX)
+class VerifyCog(commands.Cog):
+    def __init__(self, bot, check_interval, expiry_seconds, url, *args,
+                 **kwargs):
+        self.bot = bot
+        self.check_interval = check_interval
+        self.expiry_seconds = expiry_seconds
+        self.url = url
+        bot.loop.create_task(self.maintenance_loop())
+        super().__init__(*args, **kwargs)
 
-@client.event
-async def on_ready():
-    print("bot is ready")
-    while True:
-        with SqliteDict('./my_db.sqlite') as mydict:
-            check_dict = mydict
-            for key in check_dict:
-                if not check_dict[key]["server_verified"]
-                    user_id = check_dict[key]["discordid"]
-                    await discord.Member.add_roles(user_id, "verified")
-                    check_dict[key]["server_verified"] = True
-                    mydict = check_dict
-                    mydict.commit()      
-            time.sleep(300)
-            
+    @commands.Cog.listener()
+    async def on_ready(self):
+        # Search for a role called "UW Verified" in all servers and cache its
+        # id by guild id
+        self.verified_roles = {}
+        for guild in self.bot.guilds:
+            for role in guild.roles:
+                if role.name == ROLE_NAME:
+                    self.verified_roles[guild.id] = role.id
+                    break
+            else:
+                print(f"{ROLE_NAME} role not found in guild {guild}")
+        print("Bot is ready")
 
-@client.command()
-async def hello(ctx):
-    await ctx.send("Your name is: "+str(ctx.message.author.name)+" your ID is: "+str(ctx.message.author.id))
-    user = client.get_user(ctx.message.author.id)
-    embed=discord.Embed(title="Verification!",url="https://www.brocksolutions.com/wp-content/uploads/2020/02/University-of-Waterloo-1080x675.jpg", description="Hi, This is AndrewBot, The UW verify bot. Could you be a gamer for me and go to the following page to verify your email. The reason its a separate web page is for absolutely no data to be stored.", color=0x5a38d6)
-    embed.add_field(name="Verification Link:", value=str(requests.get("http://127.0.0.1:5000/new/"+str(ctx.message.author.id)).text), inline=True)
-    embed.add_field(name="Server Owner:", value=f"{ctx.guild.owner}")
-    embed.set_thumbnail(url="https://uwaterloo.ca/library/sites/ca.library/files/uploads/images/img_0236_0.jpg")
-    await user.send(embed=embed)
+    async def maintenance_loop(self):
+        interval = self.check_interval
+        print(f"Sleeping {interval} seconds between maintenance iterations")
+        while True:
+            await self.bot.wait_until_ready()
+
+            async for session_id, session in db.verified_user_ids(
+                    self.expiry_seconds):
+                user_id, guild_id = session.user_id, session.guild_id
+                try:
+                    guild = self.bot.get_guild(guild_id)
+                    member = await guild.fetch_member(user_id)
+                    role_id = self.verified_roles.get(guild_id, None)
+                    if role_id is None:
+                        print(
+                            f"Skipping verification for {session.discord_name} because no role was found in {guild}"
+                        )
+                        continue
+                    role = guild.get_role(role_id)
+                    print(
+                        f"Adding role to user {session.discord_name} with user id {member.id}"
+                    )
+                    await member.add_roles(role, reason="Verification Bot")
+                except Exception as e:
+                    print(f"Failed to add role to user in {guild_id}:\n{e}")
+                    continue
+                db.delete_session(session_id)
+
+            await db.collect_garbage(self.expiry_seconds)
+            await asyncio.sleep(interval)
+
+    @commands.command()
+    async def verify(self, ctx):
+        # Ignore all DMs for now
+        if not ctx.message.guild:
+            return
+
+        # HACK: only respond in certain channels
+        if not "verification" in ctx.channel.name.lower():
+            return
+
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+        name = f"{ctx.author.name}#{ctx.author.discriminator}"
+        session_id = db.new_session(user_id, guild_id, name)
+
+        verification_link = f"{self.url}/start/{session_id}/email"
+
+        embed = discord.Embed(
+            title="Verification!",
+            url=verification_link,
+            description=
+            "Please use this page to enter your email for verification. Your email will not be shared with Discord.",
+            color=0xffc0cb,
+        )
+        embed.add_field(
+            name="Verification Link",
+            value=verification_link,
+            inline=True,
+        )
+        embed.set_thumbnail(
+            url=
+            "https://uwaterloo.ca/library/sites/ca.library/files/uploads/images/img_0236_0.jpg"
+        )
+        await ctx.message.author.send(embed=embed)
 
 
-@client.event
-@commands.has_role(name='Admin')
-async def unverify(user):
-    #await discord.Member.removeroll_roles(user, "verified")
-    with SqliteDict('./my_db.sqlite') as mydict:
-            check_dict = mydict
-        #find persons in list and remove em
-    
+def main():
+    configdata = config.read()
+    bot = commands.Bot(command_prefix=configdata.prefix)
+    bot.add_cog(
+        VerifyCog(
+            bot=bot,
+            check_interval=configdata.check_interval,
+            expiry_seconds=configdata.expiry_seconds,
+            url=configdata.url,
+        ))
+    bot.run(configdata.token)
 
-    
-    
 
-try:
-    client.run(TOKEN, bot = True)
-except Exception as e:
-    print(f'Error when logging in: {e}')
-    
-    
-    
-    
-    
-    
-    
+if __name__ == "__main__":
+    main()
