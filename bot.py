@@ -70,6 +70,10 @@ class VerifyCog(commands.Cog):
         if not ctx.message.guild:
             return
 
+        # HACK: only respond in certain channels
+        if not "verification" in ctx.channel.name.lower():
+            return
+
         user_id = ctx.author.id
         guild_id = ctx.guild.id
         name = f"{ctx.author.name}#{ctx.author.discriminator}"
