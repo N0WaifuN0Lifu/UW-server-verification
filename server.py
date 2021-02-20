@@ -15,6 +15,7 @@ smtp_host = os.environ.get("ANDREWBOT_SMTP_HOST", None)
 smtp_port = os.environ.get("ANDREWBOT_SMTP_PORT", 465)
 smtp_user = os.environ.get("ANDREWBOT_SMTP_USER", None)
 smtp_pass = os.environ.get("ANDREWBOT_SMTP_PASS", None)
+smtp_from_addr = os.environ.get("ANDREWBOT_SMTP_FROM", None)
 if smtp_host is None:
     mail = mailer.PrintMailer()
 else:
@@ -23,6 +24,7 @@ else:
         port=smtp_port,
         username=smtp_user,
         password=smtp_pass,
+        from_addr=smtp_from_addr
     )
 
 
